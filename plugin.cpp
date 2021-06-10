@@ -8,7 +8,7 @@ using namespace cv;
 extern "C" {
     bool hflip_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
     char *hflip(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
-    //void hflip_deinit(UDF_INIT *const initid);
+    void hflip_deinit(UDF_INIT *const initid);
 }
 
 bool hflip_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
@@ -42,16 +42,17 @@ char* hflip(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, un
 
     cv::imencode(".png", image_fliped, img_encoded, param);
     char *tmp = reinterpret_cast<char*>(img_encoded.data());
-    
+    //initid->ptr = reinterpret_cast<char*>(img_encoded.data());
+
     	// also no error	
 
-    char *r = new char[img_encoded.size()];
-    memcpy(r, tmp, img_encoded.size());
+    //char *r = new char[img_encoded.size()];
+    //memcpy(r, tmp, img_encoded.size());
     *length = (unsigned long)img_encoded.size();
-    return r;
+    return tmp;
 }
-/*
+
 void hflip_deinit(UDF_INIT *const initid){
-	
+    return;
 }
-*/
+
