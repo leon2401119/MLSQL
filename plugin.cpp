@@ -2,6 +2,7 @@
 #include <cstring>
 #include <cstdio>
 #include <opencv2/opencv.hpp>
+#include <opencv2/imgproc/types_c.h>
 #include <time.h>
 
 using namespace cv;
@@ -19,22 +20,39 @@ extern "C" {
     bool randcrop_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
     char *randcrop(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
     void randcrop_deinit(UDF_INIT *const initid);
-
+    bool noise_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
+    char *noise(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
+    void noise_deinit(UDF_INIT *const initid);
+    bool cvt2gray_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
+    char *cvt2gray(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
+    void cvt2gray_deinit(UDF_INIT *const initid);
+    bool rotation_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
+    char* rotation(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
+    void rotation_deinit(UDF_INIT *const initid);
+    bool resize_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
+    char* resize(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
+    void resize_deinit(UDF_INIT *const initid);
+    bool gaussianblur_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
+    char* gaussianblur(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
+    void gaussianblur_deinit(UDF_INIT *const initid);
+    bool medianblur_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
+    char* medianblur(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
+    void medianblur_deinit(UDF_INIT *const initid);
 }
 
-Mat __hflip(Mat &in){
+Mat __hflip(Mat in){
 	Mat out;
 	flip(in,out,0);
 	return out;
 }
 
-Mat __vflip(Mat &in){
+Mat __vflip(Mat in){
 	Mat out;
 	flip(in,out,1);
 	return out;
 }
 
-Mat __chshuffle(Mat &in){
+Mat __chshuffle(Mat in){
 	Mat out;
 	Mat ch1, ch2, ch3;
 	std::vector<Mat> channels(3);
@@ -80,8 +98,8 @@ Mat __chshuffle(Mat &in){
 	return out;
 }
 
-Mat __randcrop(Mat &in, float p_row, float p_col, Scalar color){
-        Mat out = in;
+Mat __randcrop(Mat in, float p_row, float p_col, Scalar color){
+        Mat out = in.clone();
 	Point root_points[1][4];
   	int len_row = in.rows*p_row, len_col = in.cols*p_col;
   	
@@ -100,6 +118,93 @@ Mat __randcrop(Mat &in, float p_row, float p_col, Scalar color){
 	return out;
 }
 
+
+Mat __noise(Mat in, char* type, int i1, int i2){
+	/* 
+	    for gaussian noise, i1 = mean & i2 = stdev
+	    for uniform noise, i1 = min & i2 = max
+	*/
+
+	Mat out = in.clone();
+	Mat noise_mat = Mat::zeros (out.rows, out.cols, CV_8UC1);
+        if(out.channels()==1){  //gray scale image
+		if(!strcmp(type,"Gaussian") || !strcmp(type,"gaussian"))
+                	randn(noise_mat, i1, i2);
+		else if(!strcmp(type,"Uniform") || !strcmp(type,"uniform"))
+			randu(noise_mat, i1, i2);
+                out += noise_mat;
+        }
+        else{
+                std::vector<Mat> channels(3);
+                split(out, channels);
+		if(!strcmp(type,"Gaussian") || !strcmp(type,"gaussian")){
+                	for(int i=0;i<3;i++){
+                        	randn(noise_mat, i1, i2);
+                        	channels[i] += noise_mat;
+                	}
+		}
+		else if(!strcmp(type,"Uniform") || !strcmp(type,"uniform")){
+                        for(int i=0;i<3;i++){
+                                randu(noise_mat, i1, i2);
+                                channels[i] += noise_mat;
+                        }
+                }
+                merge(channels, out);
+        }
+	return out;
+}
+
+Mat __cvt2gray(Mat in){
+	Mat out;
+	cvtColor(in, out, CV_BGR2GRAY);
+	return out;
+}
+
+Mat __medianblur(Mat image, double kernel_ratio_to_image_height){
+    Mat image_blurred;
+    int ksize = (int)(kernel_ratio_to_image_height*image.rows);
+    if(ksize > image.cols)
+      ksize = image.cols;
+    if(ksize > image.rows)
+      ksize = image.rows;
+    if(ksize > 255)
+      ksize = 255;
+    if(ksize%2 == 0)
+      ksize -= 1;
+    medianBlur(	image, image_blurred, ksize);
+    return image_blurred;
+}
+
+Mat __gaussianblur(Mat image, double kernel_width_ratio, double kernel_height_ratio, double sigmaX, double sigmaY){
+    Mat image_blurred;
+    int w = image.cols*kernel_width_ratio;
+    int h = image.rows*kernel_height_ratio;
+    if(w%2==0)
+      w+=1;
+    if(h%2==0)
+      h+=1;
+    if(w>image.cols)
+      w-=2;
+    if(h>image.rows)
+      h-=2;
+    GaussianBlur(image, image_blurred, Size(w, h), sigmaX, sigmaY, 0);
+    return image_blurred;
+}
+
+Mat __resize(Mat image, double width_ratio, double height_ratio){
+    Mat image_resized;
+    resize(image, image_resized, Size(image.cols*width_ratio, image.rows*height_ratio), 0, 0, 0);
+    return image_resized;
+}
+
+Mat __rotation(Mat image, double angle){
+    Point2f center(image.cols/2.0F, image.rows/2.0F);
+    Mat M = getRotationMatrix2D(center, angle, 1.0);
+
+    Mat image_rotated;
+    warpAffine(image, image_rotated, M, image.size());
+    return image_rotated;
+}
 
 bool hflip_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
     if(args->arg_count!=1){
@@ -266,3 +371,399 @@ char* randcrop(UDF_INIT *const initid, UDF_ARGS *const args, char *const result,
 void randcrop_deinit(UDF_INIT *const initid){
 }
 
+bool noise_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
+    if(args->arg_count!=4){
+        strcpy(message,"usage:noise(img,noise_type('Gaussian','Median',...etc),mean,stdev)\n");
+        return 1;
+    }
+    if(args->arg_type[0] != STRING_RESULT){
+        strcpy(message,"arg[0] is not an image!\n");
+        return 1;
+    }
+    if(args->arg_type[1] != STRING_RESULT){
+        strcpy(message,"arg[1] is not an string!\n");
+        return 1;
+    }
+    /*if(!(atof(args->args[1]) <= 1 && atof(args->args[1]) >= 0)){
+    	strcpy(message,"arg[1] should have value between 0 and 1!\n");
+	return 1;
+    }*/
+    if(args->arg_type[2] != INT_RESULT){
+        strcpy(message,"arg[2] is not an int!\n");
+        return 1;
+    }
+    /*if(!(atof(args->args[2]) <= 1 && atof(args->args[2]) >= 0)){
+        strcpy(message,"arg[2] should have value between 0 and 1!\n");
+        return 1;
+    }*/
+    if(args->arg_type[3] != INT_RESULT){
+        strcpy(message,"arg[3] is not an int!\n");
+        return 1;
+    }
+
+    initid->max_length = 16000000;
+    return 0;
+}
+
+char* noise(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error)
+{
+    std::vector<char> buffer(args->args[0], args->args[0]+args->lengths[0]);
+    cv::Mat image = cv::imdecode(buffer, IMREAD_ANYCOLOR);
+    cv::Mat image_out = __noise(image,args->args[1],*(long long*)args->args[2],*(long long*)args->args[3]);
+    std::vector<unsigned char> img_encoded;
+    cv::imencode(".jpg", image_out, img_encoded);
+    char *tmp = reinterpret_cast<char*>(img_encoded.data());
+    *length = (unsigned long)img_encoded.size();
+    return tmp;
+}
+
+void noise_deinit(UDF_INIT *const initid){
+}
+
+bool cvt2gray_init(UDF_INIT *initid, UDF_ARGS *args, char *message){
+    if(args->arg_count!=1){
+        strcpy(message,"usage:cvt2gray(img)\n");
+        return 1;
+    }
+    if(args->arg_type[0] != STRING_RESULT){
+        strcpy(message,"arg[0] is not an image!\n");
+        return 1;
+    }
+    initid->max_length = 16000000;
+    return 0;
+}
+
+char* cvt2gray(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error)
+{
+    std::vector<char> buffer(args->args[0], args->args[0]+args->lengths[0]);
+    cv::Mat image = cv::imdecode(buffer, IMREAD_ANYCOLOR);
+    cv::Mat image_out = __cvt2gray(image);
+    std::vector<unsigned char> img_encoded;
+    cv::imencode(".jpg", image_out, img_encoded);
+    char *tmp = reinterpret_cast<char*>(img_encoded.data());
+    *length = (unsigned long)img_encoded.size();
+    return tmp;
+}
+
+void cvt2gray(UDF_INIT *const initid){
+}
+
+bool medianblur_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
+    if(args->arg_count != 2){
+    	strcpy(message,"usage:medianBlur(blob img,double kernel_ratio_to_image_height)\n");
+	    return 1;
+    }
+    if(args->arg_type[0] != STRING_RESULT){
+	    strcpy(message,"arg[0] is not an image!\n");
+	    return 1;
+    }
+    if(args->arg_type[1] != INT_RESULT && args->arg_type[1] != DECIMAL_RESULT){
+        strcpy(message,"arg[1] is not a number!\n");
+        return 1;
+    }
+    initid->max_length = 16000000;
+    return 0;
+}
+
+char* medianblur(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error)
+{
+    std::vector<char> buffer(args->args[0], args->args[0]+args->lengths[0]);
+    Mat image = cv::imdecode(buffer, IMREAD_ANYCOLOR);
+    Mat image_blurred;
+    if(args->arg_type[1] == INT_RESULT)
+        image_blurred = __medianblur(image, *(long long*)args->args[1]);
+    else
+        image_blurred = __medianblur(image, atof(args->args[1]));
+    std::vector<unsigned char> img_encoded;
+    cv::imencode(".png", image_blurred, img_encoded);
+    char *tmp = reinterpret_cast<char*>(img_encoded.data());
+    *length = (unsigned long)img_encoded.size();
+    return tmp;
+}
+
+void medianblur_deinit(UDF_INIT *const initid){
+}
+
+bool gaussianblur_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
+    if(args->arg_count != 4 && args->arg_count != 5){
+    	strcpy(message,"usage:gaussianBlur(blob img,double kernel_width_ratio,double kernel_height_ratio,double sigmaX[,double sigmaY])\n");
+	    return 1;
+    }
+    if(args->arg_type[0] != STRING_RESULT){
+	    strcpy(message,"arg[0] is not an image!\n");
+	    return 1;
+    }
+    if(args->arg_type[1] != INT_RESULT && args->arg_type[1] != DECIMAL_RESULT){
+        strcpy(message,"arg[1] is not a number!\n");
+        return 1;
+    }
+    if(args->arg_type[2] != INT_RESULT && args->arg_type[2] != DECIMAL_RESULT){
+        strcpy(message,"arg[2] is not a number!\n");
+        return 1;
+    }
+    if(args->arg_type[3] != INT_RESULT && args->arg_type[3] != DECIMAL_RESULT){
+        strcpy(message,"arg[3] is not a number!\n");
+        return 1;
+    }
+    if(args->arg_count == 5){
+        if(args->arg_type[4] != INT_RESULT && args->arg_type[4] != DECIMAL_RESULT){
+            strcpy(message,"arg[4] is not a number!\n");
+            return 1;
+        }
+    }
+    if(args->arg_type[1] == INT_RESULT && *(long long*)args->args[1]>1){
+        strcpy(message,"The kernel width should be smaller than the image width!\n");
+        return 1;
+    }
+    if(args->arg_type[1] == DECIMAL_RESULT && atof(args->args[1])>1){
+        strcpy(message,"The kernel width should be smaller than the image width!\n");
+        return 1;
+    }
+    if(args->arg_type[2] == INT_RESULT && *(long long*)args->args[2]>1){
+        strcpy(message,"The kernel height should be smaller than the image height!\n");
+        return 1;
+    }
+    if(args->arg_type[2] == DECIMAL_RESULT && atof(args->args[2])>1){
+        strcpy(message,"The kernel height should be smaller than the image height!\n");
+        return 1;
+    }
+    initid->max_length = 16000000;
+    return 0;
+}
+
+char* gaussianblur(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error)
+{
+    std::vector<char> buffer(args->args[0], args->args[0]+args->lengths[0]);
+    Mat image = cv::imdecode(buffer, IMREAD_ANYCOLOR);
+    Mat image_blurred;
+    if(args->arg_type[1] == INT_RESULT
+        && args->arg_type[2] == INT_RESULT
+        && args->arg_type[3] == INT_RESULT){
+        if(args->arg_count == 5){
+            if(args->arg_type[4] == INT_RESULT){
+                image_blurred = __gaussianblur(image, *(long long*)args->args[1], *(long long*)args->args[2], *(long long*)args->args[3], *(long long*)args->args[4]);
+            }
+            else{
+                double sigma = atof(args->args[4]);
+                image_blurred = __gaussianblur(image, *(long long*)args->args[1], *(long long*)args->args[2], *(long long*)args->args[3], sigma);
+            }
+        }
+        else
+            image_blurred = __gaussianblur(image, *(long long*)args->args[1], *(long long*)args->args[2], *(long long*)args->args[3], *(long long*)args->args[3]);
+    }
+    else if(args->arg_type[1] == DECIMAL_RESULT
+        && args->arg_type[2] == INT_RESULT
+        && args->arg_type[3] == INT_RESULT){
+        if(args->arg_count == 5){
+            if(args->arg_type[4] == INT_RESULT){
+                long long sigma = *(long long*)args->args[4];
+                image_blurred = __gaussianblur(image, atof(args->args[1]), *(long long*)args->args[2], *(long long*)args->args[3], sigma);
+            }
+            else{
+                double sigma = atof(args->args[4]);
+                image_blurred = __gaussianblur(image, atof(args->args[1]), *(long long*)args->args[2], *(long long*)args->args[3], sigma);
+            }
+
+        }
+        else
+            image_blurred = __gaussianblur(image, atof(args->args[1]), *(long long*)args->args[2], *(long long*)args->args[3], *(long long*)args->args[3]);
+    }
+    else if(args->arg_type[1] == INT_RESULT
+        && args->arg_type[2] == DECIMAL_RESULT
+        && args->arg_type[3] == INT_RESULT){
+        if(args->arg_count == 5){
+            if(args->arg_type[4] == INT_RESULT){
+                long long sigma = *(long long*)args->args[4];
+                image_blurred = __gaussianblur(image, *(long long*)args->args[1], atof(args->args[2]), *(long long*)args->args[3], sigma);
+            }
+            else{
+                double sigma = atof(args->args[4]);
+                image_blurred = __gaussianblur(image, *(long long*)args->args[1], atof(args->args[2]), *(long long*)args->args[3], sigma);
+            }
+
+        }
+        else
+            image_blurred = __gaussianblur(image, *(long long*)args->args[1], atof(args->args[2]), *(long long*)args->args[3], *(long long*)args->args[3]);
+    }
+    else if(args->arg_type[1] == INT_RESULT
+        && args->arg_type[2] == INT_RESULT
+        && args->arg_type[3] == DECIMAL_RESULT){
+        if(args->arg_count == 5){
+            if(args->arg_type[4] == INT_RESULT){
+                long long sigma = *(long long*)args->args[4];
+                image_blurred = __gaussianblur(image, *(long long*)args->args[1], *(long long*)args->args[2], atof(args->args[3]), sigma);
+            }
+            else{
+                double sigma = atof(args->args[4]);
+                image_blurred = __gaussianblur(image, *(long long*)args->args[1], *(long long*)args->args[2], atof(args->args[3]), sigma);
+            }
+
+        }
+        else
+            image_blurred = __gaussianblur(image, *(long long*)args->args[1], *(long long*)args->args[2], atof(args->args[3]), atof(args->args[3]));
+    }
+    else if(args->arg_type[1] == INT_RESULT
+        && args->arg_type[2] == DECIMAL_RESULT
+        && args->arg_type[3] == DECIMAL_RESULT){
+        if(args->arg_count == 5){
+            if(args->arg_type[4] == INT_RESULT){
+                long long sigma = *(long long*)args->args[4];
+                image_blurred = __gaussianblur(image, *(long long*)args->args[1], atof(args->args[2]), atof(args->args[3]), sigma);
+            }
+            else{
+                double sigma = atof(args->args[4]);
+                image_blurred = __gaussianblur(image, *(long long*)args->args[1], atof(args->args[2]), atof(args->args[3]), sigma);
+            }
+
+        }
+        else
+            image_blurred = __gaussianblur(image, *(long long*)args->args[1], atof(args->args[2]), atof(args->args[3]), atof(args->args[3]));
+    }
+    else if(args->arg_type[1] == DECIMAL_RESULT
+        && args->arg_type[2] == INT_RESULT
+        && args->arg_type[3] == DECIMAL_RESULT){
+        if(args->arg_count == 5){
+            if(args->arg_type[4] == INT_RESULT){
+                long long sigma = *(long long*)args->args[4];
+                image_blurred = __gaussianblur(image, atof(args->args[1]), *(long long*)args->args[2], atof(args->args[3]), sigma);
+            }
+            else{
+                double sigma = atof(args->args[4]);
+                image_blurred = __gaussianblur(image, atof(args->args[1]), *(long long*)args->args[2], atof(args->args[3]), sigma);
+            }
+
+        }
+        else
+            image_blurred = __gaussianblur(image, atof(args->args[1]), *(long long*)args->args[2], atof(args->args[3]), atof(args->args[3]));
+    }
+    else if(args->arg_type[1] == DECIMAL_RESULT
+        && args->arg_type[2] == DECIMAL_RESULT
+        && args->arg_type[3] == INT_RESULT){
+        if(args->arg_count == 5){
+            if(args->arg_type[4] == INT_RESULT){
+                long long sigma = *(long long*)args->args[4];
+                image_blurred = __gaussianblur(image, atof(args->args[1]), atof(args->args[2]), *(long long*)args->args[3], sigma);
+            }
+            else{
+                double sigma = atof(args->args[4]);
+                image_blurred = __gaussianblur(image, atof(args->args[1]), atof(args->args[2]), *(long long*)args->args[3], sigma);
+            }
+
+        }
+        else
+            image_blurred = __gaussianblur(image, atof(args->args[1]), atof(args->args[2]), *(long long*)args->args[3], *(long long*)args->args[3]);
+    }
+    //all decimal
+    else{
+        if(args->arg_count == 5){
+            if(args->arg_type[4] == INT_RESULT){
+                long long sigma = *(long long*)args->args[4];
+                image_blurred = __gaussianblur(image, atof(args->args[1]), atof(args->args[2]), *(long long*)args->args[3], sigma);
+            }
+            else{
+                double sigma = atof(args->args[4]);
+                image_blurred = __gaussianblur(image, atof(args->args[1]), atof(args->args[2]), *(long long*)args->args[3], sigma);
+            }
+
+        }
+        else
+            image_blurred = __gaussianblur(image, atof(args->args[1]), atof(args->args[2]), atof(args->args[3]), atof(args->args[3]));
+    }
+    std::vector<unsigned char> img_encoded;
+    cv::imencode(".png", image_blurred, img_encoded);
+    char *tmp = reinterpret_cast<char*>(img_encoded.data());
+
+    *length = (unsigned long)img_encoded.size();
+    return tmp;
+}
+
+void gaussianblur_deinit(UDF_INIT *const initid){
+}
+
+bool resize_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
+    if(args->arg_count != 3 && args->arg_count != 4){
+    	strcpy(message,"usage:resize(blob img,int width_ration,int height_ration) or resize(blog img,int width_ration,int height_ration,int interpolation)\n");
+	    return 1;
+    }
+    if(args->arg_type[0] != STRING_RESULT){
+	    strcpy(message,"arg[0] is not an image!\n");
+	    return 1;
+    }
+    if(args->arg_type[1] != INT_RESULT && args->arg_type[1] != DECIMAL_RESULT){
+        strcpy(message,"arg[1] is not a number!\n");
+        return 1;
+    }
+    if(args->arg_type[2] != INT_RESULT && args->arg_type[2] != DECIMAL_RESULT){
+        strcpy(message,"arg[2] is not a number!\n");
+        return 1;
+    }
+    initid->max_length = 16000000;
+    return 0;
+}
+
+char* resize(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error)
+{
+    std::vector<char> buffer(args->args[0], args->args[0]+args->lengths[0]);
+    Mat image = cv::imdecode(buffer, IMREAD_ANYCOLOR);
+    Mat image_resized;
+    if(args->arg_type[1] == INT_RESULT && args->arg_type[2] == INT_RESULT){
+        image_resized = __resize(image, *(long long*)args->args[1], *(long long*)args->args[2]);
+    }
+    else if(args->arg_type[1] == INT_RESULT && args->arg_type[2] == DECIMAL_RESULT){
+        image_resized = __resize(image, *(long long*)args->args[1], atof(args->args[2]));
+    }
+    else if(args->arg_type[1] == DECIMAL_RESULT && args->arg_type[2] == DECIMAL_RESULT){
+        image_resized = __resize(image, atof(args->args[1]), atof(args->args[2]));
+    }
+    else{
+        image_resized = __resize(image, atof(args->args[1]), *(long long*)args->args[2]);
+    }
+
+    std::vector<unsigned char> img_encoded;
+    cv::imencode(".png", image_resized, img_encoded);
+    char *tmp = reinterpret_cast<char*>(img_encoded.data());
+
+    *length = (unsigned long)img_encoded.size();
+    return tmp;
+}
+
+void resize_deinit(UDF_INIT *const initid){
+}
+
+bool rotation_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
+    if(args->arg_count != 2){
+    	strcpy(message,"usage:rotation(blob img,double angle) or rotation(blob img,int angle)\n");
+	    return 1;
+    }
+    if(args->arg_type[0] != STRING_RESULT){
+	    strcpy(message,"arg[0] is not an image!\n");
+	    return 1;
+    }
+    if(args->arg_type[1] != DECIMAL_RESULT && args->arg_type[1] != INT_RESULT){
+        strcpy(message,"arg[1] is not a number!\n");
+	    return 1;
+    }
+    initid->max_length = 16000000;
+    return 0;
+}
+
+char* rotation(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error)
+{
+    std::vector<char> buffer(args->args[0], args->args[0]+args->lengths[0]);
+    Mat image = cv::imdecode(buffer, IMREAD_ANYCOLOR);
+    Mat image_rotated;
+    if(args->arg_type[1] == DECIMAL_RESULT){
+        image_rotated = __rotation(image, atof(args->args[1]));
+    }
+    else{
+        image_rotated = __rotation(image, *(long long*)args->args[1]);
+    }
+    std::vector<unsigned char> img_encoded;
+    imencode(".png", image_rotated, img_encoded);
+    char *tmp = reinterpret_cast<char*>(img_encoded.data());
+    *length = (unsigned long)img_encoded.size();
+    return tmp;
+}
+
+void rotation_deinit(UDF_INIT *const initid){
+}
