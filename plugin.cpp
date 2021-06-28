@@ -38,6 +38,9 @@ extern "C" {
     bool medianblur_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
     char* medianblur(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
     void medianblur_deinit(UDF_INIT *const initid);
+    //bool decode_init(UDF_INIT *initid, UDF_ARGS *args, char *message);
+    //char* decode(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error);
+    //void decode_deinit(UDF_INIT *const initid);
 }
 
 Mat __hflip(Mat in){
@@ -53,48 +56,46 @@ Mat __vflip(Mat in){
 }
 
 Mat __chshuffle(Mat in){
-	Mat out;
-	Mat ch1, ch2, ch3;
-	std::vector<Mat> channels(3);
-	split(in, channels);
-  	// get the channels (follow BGR order in OpenCV)
-  	ch1 = channels[0];
-  	ch2 = channels[1];
-  	ch3 = channels[2];
-	switch(rand()%6){
-	  case 0:
-                channels[0] = ch1;
-                channels[1] = ch2;
-                channels[2] = ch3;
-                break;
-          case 1:
-                channels[0] = ch1;
-                channels[1] = ch3;
-                channels[2] = ch2;
-                break;
-          case 2:
-                channels[0] = ch2;
-                channels[1] = ch1;
-                channels[2] = ch3;
-                break;
-          case 3:
-                channels[0] = ch2;
-                channels[1] = ch3;
-                channels[2] = ch1;
-                break;
-          case 4:
-                channels[0] = ch3;
-                channels[1] = ch1;
-                channels[2] = ch2;
-                break;
-          case 5:
-                channels[0] = ch3;
-                channels[1] = ch2;
-                channels[2] = ch1;
-                break;
+  std::vector<cv::Mat> inChannels(3);
+	split(in, inChannels);
 
-	}
-	merge(channels, out);
+	cv::Mat out;
+	std::vector<cv::Mat> outChannels;
+
+  int p = rand()%6;
+  switch(p){
+    case 0:
+      outChannels.push_back(inChannels[0]);
+      outChannels.push_back(inChannels[1]);
+      outChannels.push_back(inChannels[2]);
+      break;
+    case 1:
+      outChannels.push_back(inChannels[0]);
+      outChannels.push_back(inChannels[2]);
+      outChannels.push_back(inChannels[1]);
+      break;
+    case 2:
+      outChannels.push_back(inChannels[1]);
+      outChannels.push_back(inChannels[0]);
+      outChannels.push_back(inChannels[2]);
+      break;
+    case 3:
+      outChannels.push_back(inChannels[1]);
+      outChannels.push_back(inChannels[2]);
+      outChannels.push_back(inChannels[0]);
+      break;
+    case 4:
+      outChannels.push_back(inChannels[2]);
+      outChannels.push_back(inChannels[0]);
+      outChannels.push_back(inChannels[1]);
+      break;
+    case 5:
+      outChannels.push_back(inChannels[2]);
+      outChannels.push_back(inChannels[1]);
+      outChannels.push_back(inChannels[0]);
+      break;
+  }
+	cv::merge(outChannels, out);
 	return out;
 }
 
@@ -114,20 +115,20 @@ Mat __randcrop(Mat in, float p_row, float p_col, Scalar color){
   	const Point* ppt[1] = { root_points[0] };
   	int npt[] = { 4 };
 
-  	fillPoly(out ,ppt, npt, 1, Scalar(255, 255, 255));
+  	fillPoly(out ,ppt, npt, 1, color);
 	return out;
 }
 
 
-Mat __noise(Mat in, char* type, int i1, int i2){
+Mat __noise(Mat in, const char* type, int i1, int i2){
 	/* 
 	    for gaussian noise, i1 = mean & i2 = stdev
 	    for uniform noise, i1 = min & i2 = max
 	*/
 
 	Mat out = in.clone();
-	Mat noise_mat = Mat::zeros (out.rows, out.cols, CV_8UC1);
         if(out.channels()==1){  //gray scale image
+		Mat noise_mat = Mat::zeros (out.rows, out.cols, CV_8UC1);
 		if(!strcmp(type,"Gaussian") || !strcmp(type,"gaussian"))
                 	randn(noise_mat, i1, i2);
 		else if(!strcmp(type,"Uniform") || !strcmp(type,"uniform"))
@@ -135,21 +136,13 @@ Mat __noise(Mat in, char* type, int i1, int i2){
                 out += noise_mat;
         }
         else{
-                std::vector<Mat> channels(3);
-                split(out, channels);
-		if(!strcmp(type,"Gaussian") || !strcmp(type,"gaussian")){
-                	for(int i=0;i<3;i++){
-                        	randn(noise_mat, i1, i2);
-                        	channels[i] += noise_mat;
-                	}
-		}
-		else if(!strcmp(type,"Uniform") || !strcmp(type,"uniform")){
-                        for(int i=0;i<3;i++){
-                                randu(noise_mat, i1, i2);
-                                channels[i] += noise_mat;
-                        }
-                }
-                merge(channels, out);
+                Mat noise_mat_3(Size(out.cols,out.rows), CV_8UC(3));
+		if(!strcmp(type,"Gaussian") || !strcmp(type,"gaussian"))
+                        randn(noise_mat_3, i1, i2);
+		else if(!strcmp(type,"Uniform") || !strcmp(type,"uniform"))
+                        randu(noise_mat_3, i1, i2);
+		
+		out += noise_mat_3;
         }
 	return out;
 }
@@ -373,7 +366,7 @@ void randcrop_deinit(UDF_INIT *const initid){
 
 bool noise_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
     if(args->arg_count!=4){
-        strcpy(message,"usage:noise(img,noise_type('Gaussian','Median',...etc),mean,stdev)\n");
+        strcpy(message,"usage:noise(img,noise_type('Gaussian','Uniform',...etc),mean,stdev)\n");
         return 1;
     }
     if(args->arg_type[0] != STRING_RESULT){
@@ -384,18 +377,14 @@ bool noise_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
         strcpy(message,"arg[1] is not an string!\n");
         return 1;
     }
-    /*if(!(atof(args->args[1]) <= 1 && atof(args->args[1]) >= 0)){
-    	strcpy(message,"arg[1] should have value between 0 and 1!\n");
+    if(strcmp(args->args[1],"Gaussian") && strcmp(args->args[1],"gaussian") && strcmp(args->args[1],"Uniform") && strcmp(args->args[1],"uniform")){
+    	strcpy(message,"arg[1] is not a valid noise type!\n Currently available noises : Gaussian, Uniform\n");
 	return 1;
-    }*/
+    }
     if(args->arg_type[2] != INT_RESULT){
         strcpy(message,"arg[2] is not an int!\n");
         return 1;
     }
-    /*if(!(atof(args->args[2]) <= 1 && atof(args->args[2]) >= 0)){
-        strcpy(message,"arg[2] should have value between 0 and 1!\n");
-        return 1;
-    }*/
     if(args->arg_type[3] != INT_RESULT){
         strcpy(message,"arg[3] is not an int!\n");
         return 1;
@@ -475,7 +464,7 @@ char* medianblur(UDF_INIT *const initid, UDF_ARGS *const args, char *const resul
     else
         image_blurred = __medianblur(image, atof(args->args[1]));
     std::vector<unsigned char> img_encoded;
-    cv::imencode(".png", image_blurred, img_encoded);
+    cv::imencode(".jpg", image_blurred, img_encoded);
     char *tmp = reinterpret_cast<char*>(img_encoded.data());
     *length = (unsigned long)img_encoded.size();
     return tmp;
@@ -670,7 +659,7 @@ char* gaussianblur(UDF_INIT *const initid, UDF_ARGS *const args, char *const res
             image_blurred = __gaussianblur(image, atof(args->args[1]), atof(args->args[2]), atof(args->args[3]), atof(args->args[3]));
     }
     std::vector<unsigned char> img_encoded;
-    cv::imencode(".png", image_blurred, img_encoded);
+    cv::imencode(".jpg", image_blurred, img_encoded);
     char *tmp = reinterpret_cast<char*>(img_encoded.data());
 
     *length = (unsigned long)img_encoded.size();
@@ -720,7 +709,7 @@ char* resize(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, u
     }
 
     std::vector<unsigned char> img_encoded;
-    cv::imencode(".png", image_resized, img_encoded);
+    cv::imencode(".jpg", image_resized, img_encoded);
     char *tmp = reinterpret_cast<char*>(img_encoded.data());
 
     *length = (unsigned long)img_encoded.size();
@@ -759,7 +748,7 @@ char* rotation(UDF_INIT *const initid, UDF_ARGS *const args, char *const result,
         image_rotated = __rotation(image, *(long long*)args->args[1]);
     }
     std::vector<unsigned char> img_encoded;
-    imencode(".png", image_rotated, img_encoded);
+    imencode(".jpg", image_rotated, img_encoded);
     char *tmp = reinterpret_cast<char*>(img_encoded.data());
     *length = (unsigned long)img_encoded.size();
     return tmp;
@@ -767,3 +756,34 @@ char* rotation(UDF_INIT *const initid, UDF_ARGS *const args, char *const result,
 
 void rotation_deinit(UDF_INIT *const initid){
 }
+
+
+bool decode_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
+    if(args->arg_count!=1){
+        strcpy(message,"usage:decode(img)\n");
+        return 1;
+    }
+    if(args->arg_type[0] != STRING_RESULT){
+        strcpy(message,"arg[0] is not an image!\n");
+        return 1;
+    }
+    initid->max_length = 16000000;
+    return 0;
+}
+
+char* decode(UDF_INIT *const initid, UDF_ARGS *const args, char *const result, unsigned long *const length, char *const is_null, char *const error)
+{
+    std::vector<char> buffer(args->args[0], args->args[0]+args->lengths[0]);
+    cv::Mat image = cv::imdecode(buffer, IMREAD_ANYCOLOR);
+
+    cv::Mat flat = image.reshape(1, image.total()*image.channels());
+    std::vector<unsigned char> arr = image.isContinuous()? flat : flat.clone();
+
+    char *tmp = reinterpret_cast<char*>(arr.data());
+    *length = (unsigned long)arr.size();
+    return tmp;
+}
+
+void decode_deinit(UDF_INIT *const initid){
+}
+
