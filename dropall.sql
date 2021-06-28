@@ -1,0 +1,12 @@
+drop table if exists img;
+drop function if exists hflip;
+drop function if exists vflip;
+drop function if exists chshuffle;
+drop function if exists randcrop;
+drop function if exists rotation;
+drop function if exists noise;
+drop function if exists gaussianblur;
+drop function if exists medianblur;
+drop function if exists cvt2gray;
+drop function if exists resize;
+drop function if exists aug;
