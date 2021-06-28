@@ -56,64 +56,46 @@ Mat __vflip(Mat in){
 }
 
 Mat __chshuffle(Mat in){
-  Mat out=in.clone();
+  std::vector<cv::Mat> inChannels(3);
+	split(in, inChannels);
+
+	cv::Mat out;
+	std::vector<cv::Mat> outChannels;
+
   int p = rand()%6;
   switch(p){
     case 0:
-      for (int i = 0; i < in.rows; i++) {
-        for (int j = 0; j < in.cols; j++){ 
-          out.at<Vec3b>(i, j)[0] = in.at<Vec3b>(i,j)[0];
-          out.at<Vec3b>(i, j)[1] = in.at<Vec3b>(i,j)[1];
-          out.at<Vec3b>(i, j)[2] = in.at<Vec3b>(i,j)[2];
-        }
-      }
+      outChannels.push_back(inChannels[0]);
+      outChannels.push_back(inChannels[1]);
+      outChannels.push_back(inChannels[2]);
       break;
     case 1:
-      for (int i = 0; i < in.rows; i++) {
-        for (int j = 0; j < in.cols; j++){ 
-          out.at<Vec3b>(i, j)[0] = in.at<Vec3b>(i,j)[0];
-          out.at<Vec3b>(i, j)[1] = in.at<Vec3b>(i,j)[2];
-          out.at<Vec3b>(i, j)[2] = in.at<Vec3b>(i,j)[1];
-        }
-      }
+      outChannels.push_back(inChannels[0]);
+      outChannels.push_back(inChannels[2]);
+      outChannels.push_back(inChannels[1]);
       break;
     case 2:
-      for (int i = 0; i < in.rows; i++){
-        for (int j = 0; j < in.cols; j++){ 
-          out.at<Vec3b>(i, j)[0] = in.at<Vec3b>(i,j)[1];
-          out.at<Vec3b>(i, j)[1] = in.at<Vec3b>(i,j)[0];
-          out.at<Vec3b>(i, j)[2] = in.at<Vec3b>(i,j)[2];
-        }
-      }
+      outChannels.push_back(inChannels[1]);
+      outChannels.push_back(inChannels[0]);
+      outChannels.push_back(inChannels[2]);
       break;
     case 3:
-      for (int i = 0; i < in.rows; i++){
-        for (int j = 0; j < in.cols; j++){ 
-          out.at<Vec3b>(i, j)[0] = in.at<Vec3b>(i,j)[1];
-          out.at<Vec3b>(i, j)[1] = in.at<Vec3b>(i,j)[2];
-          out.at<Vec3b>(i, j)[2] = in.at<Vec3b>(i,j)[0];
-        }
-      }
+      outChannels.push_back(inChannels[1]);
+      outChannels.push_back(inChannels[2]);
+      outChannels.push_back(inChannels[0]);
       break;
     case 4:
-      for (int i = 0; i < in.rows; i++){
-        for (int j = 0; j < in.cols; j++){ 
-          out.at<Vec3b>(i, j)[0] = in.at<Vec3b>(i,j)[2];
-          out.at<Vec3b>(i, j)[1] = in.at<Vec3b>(i,j)[0];
-          out.at<Vec3b>(i, j)[2] = in.at<Vec3b>(i,j)[1];
-        }
-      }
+      outChannels.push_back(inChannels[2]);
+      outChannels.push_back(inChannels[0]);
+      outChannels.push_back(inChannels[1]);
       break;
     case 5:
-      for (int i = 0; i < in.rows; i++){
-        for (int j = 0; j < in.cols; j++){ 
-          out.at<Vec3b>(i, j)[0] = in.at<Vec3b>(i,j)[2];
-          out.at<Vec3b>(i, j)[1] = in.at<Vec3b>(i,j)[1];
-          out.at<Vec3b>(i, j)[2] = in.at<Vec3b>(i,j)[0];
-        }
-      }
+      outChannels.push_back(inChannels[2]);
+      outChannels.push_back(inChannels[1]);
+      outChannels.push_back(inChannels[0]);
       break;
   }
+	cv::merge(outChannels, out);
 	return out;
 }
 
@@ -145,8 +127,8 @@ Mat __noise(Mat in, const char* type, int i1, int i2){
 	*/
 
 	Mat out = in.clone();
-	Mat noise_mat = Mat::zeros (out.rows, out.cols, CV_8UC1);
         if(out.channels()==1){  //gray scale image
+		Mat noise_mat = Mat::zeros (out.rows, out.cols, CV_8UC1);
 		if(!strcmp(type,"Gaussian") || !strcmp(type,"gaussian"))
                 	randn(noise_mat, i1, i2);
 		else if(!strcmp(type,"Uniform") || !strcmp(type,"uniform"))
@@ -154,26 +136,13 @@ Mat __noise(Mat in, const char* type, int i1, int i2){
                 out += noise_mat;
         }
         else{
-                std::vector<Mat> channels(3);
-                split(out, channels);
-		if(!strcmp(type,"Gaussian") || !strcmp(type,"gaussian")){
-                	for(int i=0;i<3;i++){
-                        	randn(noise_mat, i1, i2);
-                        	channels[i] += noise_mat;
-                	}
-		}
-		else if(!strcmp(type,"Uniform") || !strcmp(type,"uniform")){
-                        for(int i=0;i<3;i++){
-                                randu(noise_mat, i1, i2);
-                                channels[i] += noise_mat;
-                        }
-                }
-                merge(channels, out);
-		/*
-		Mat noise_mat_3(Size(out.rows,out.cols), CV_8UC(3));
-		randn(noise_mat_3,i1,i2);
+                Mat noise_mat_3(Size(out.cols,out.rows), CV_8UC(3));
+		if(!strcmp(type,"Gaussian") || !strcmp(type,"gaussian"))
+                        randn(noise_mat_3, i1, i2);
+		else if(!strcmp(type,"Uniform") || !strcmp(type,"uniform"))
+                        randu(noise_mat_3, i1, i2);
+		
 		out += noise_mat_3;
-		*/
         }
 	return out;
 }
